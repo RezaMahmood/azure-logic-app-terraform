@@ -1,0 +1,66 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workflow_name": {
+            "defaultValue": "LogicApp",
+            "type": "String"
+        },
+        "location": {
+            "type": "String",
+            "defaultValue": "southeastasia"
+        },
+        "identity": {
+            "type": "string",
+            "defaultValue":""
+        },
+        "frequency": {
+            "type": "String",
+            "defaultValue": "Minute"
+        },
+        "interval": {
+            "type": "int",
+            "defaultValue": 5
+        }
+    },
+    "variables": {},
+    "resources": [
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2019-05-01",
+            "name": "[parameters('workflow_name')]",
+            "location": "[parameters('location')]",
+            "tags": {},            
+            "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                    "[parameters('identity')]": {}
+                }
+            },
+            "properties": {
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {},
+                    "triggers": {
+                        "recurrence": {
+                            "type": "recurrence",
+                            "recurrence": {
+                                "frequency": "[parameters('frequency')]",
+                                "interval": "[parameters('interval')]"
+                            }
+                        }
+                    },
+                    "actions": {
+                    }
+                }
+            }
+        }
+    ],
+    "outputs":{
+        "workflowId":{
+            "type": "String",
+            "value": "[resourceId('Microsoft.Logic/workflows',parameters('workflow_name'))]"
+        }
+    }
+}
