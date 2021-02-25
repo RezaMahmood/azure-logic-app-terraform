@@ -17,12 +17,13 @@ locals{
     logicAppName = "LogExport-Query1"
     frequency = "Minute"
     interval = 5
-    logQuery = "Heartbeat"
+    logQuery = "AzureDiagnostics"
     workspaceSubscriptionId = ""
     workspaceName = "LogAlertsPOC"
     workspaceResourceGroup = "logalerts"
     timespan = "PT5M"    
-    identityName = "LogReaderIdentity"    
+    identityName = "LogReaderIdentity"
+    dataIngestUrl = ""    
 }
 
 
@@ -70,9 +71,10 @@ resource "azurerm_resource_group_template_deployment" "logicapp"{
         interval =      {value=local.interval}
     })
   
+    depends_on = [ azurerm_user_assigned_identity.logicapp_identity ]
 }
 
-resource "azurerm_logic_app_action_custom" "logicapp"{
+resource "azurerm_logic_app_action_custom" "logicapp_executequery"{
     name = "ExecuteLogAnalyticsQuery"
     logic_app_id = jsondecode(azurerm_resource_group_template_deployment.logicapp.output_content).workflowId.value
     body = <<BODY
@@ -100,5 +102,119 @@ resource "azurerm_logic_app_action_custom" "logicapp"{
     depends_on = [azurerm_resource_group_template_deployment.logicapp ]
 }
 
+resource "azurerm_logic_app_action_custom" "logicapp_parsequeryresults"{
+    name = "ParseQueryResults"
+    logic_app_id = jsondecode(azurerm_resource_group_template_deployment.logicapp.output_content).workflowId.value
+    body = <<BODY
+        {
+                "inputs": {
+                    "content": "@body('ExecuteLogAnalyticsQuery')",
+                    "schema": {
+                        "properties": {
+                            "Tables": {
+                                "items": {
+                                    "properties": {
+                                        "Columns": {
+                                            "items": {
+                                                "properties": {
+                                                    "ColumnName": {
+                                                        "type": "string"
+                                                    },
+                                                    "ColumnType": {
+                                                        "type": "string"
+                                                    },
+                                                    "DataType": {
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "ColumnName",
+                                                    "DataType",
+                                                    "ColumnType"
+                                                ],
+                                                "type": "object"
+                                            },
+                                            "type": "array"
+                                        },
+                                        "Rows": {
+                                            "items": {
+                                                "type": "array"
+                                            },
+                                            "type": "array"
+                                        },
+                                        "TableName": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "TableName",
+                                        "Columns",
+                                        "Rows"
+                                    ],
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "runAfter": {
+                    "ExecuteLogAnalyticsQuery": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ParseJson"
+            }
+    BODY
 
+    depends_on = [azurerm_logic_app_action_custom.logicapp_executequery ]
+}
+
+resource "azurerm_logic_app_action_custom" "logicapp_composepayload"{
+    name = "ComposeFunctionPayload"
+    logic_app_id = jsondecode(azurerm_resource_group_template_deployment.logicapp.output_content).workflowId.value
+    body=<<BODY
+            {
+                "inputs": {
+                    "SearchQuery": "${local.logQuery}",
+                    "SearchResult": {
+                        "tables": "@body('ParseQueryResults')?['Tables']"
+                    },
+                    "SubscriptionId": "${local.workspaceSubscriptionId}"
+                },
+                "runAfter": {
+                    "ParseQueryResults": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Compose"
+            }
+
+    BODY
+
+    depends_on = [azurerm_logic_app_action_custom.logicapp_parsequeryresults ]
+}
+
+resource "azurerm_logic_app_action_custom" "logicapp_postToFunction"{
+    name = "PostToFunction"
+    logic_app_id = jsondecode(azurerm_resource_group_template_deployment.logicapp.output_content).workflowId.value
+    body=<<BODY
+            {
+                "inputs": {
+                    "body": "@outputs('ComposeFunctionPayload')",
+                    "method": "POST",
+                    "uri": "${local.dataIngestUrl}"
+                },
+                "runAfter": {
+                    "ComposeFunctionPayload": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Http"
+            }
+    BODY
+
+    depends_on = [azurerm_logic_app_action_custom.logicapp_composepayload ]
+}
 

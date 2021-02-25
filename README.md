@@ -9,3 +9,5 @@ This script implements the following logic:
 - Assign the "Monitoring Reader" role to the Managed Identity, scoped to the workspace we want to query
 - Create a Logic App with Managed Identity using an ARM template.  Note the output to ensure we can get back the Logic App's ResourceId
 - Create a Logic App action with Terraform to query the Log Analytics workspace using the Managed Identity
+- Create a Logic App action with Terraform to squash the query result into a desired schema
+- Create a Logic App action with Terraform to post to a URL endpoint
