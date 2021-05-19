@@ -14,15 +14,14 @@ provider "azurerm" {
 locals{
     resource_group_name = "terraform-logAlerts"
     location = "southeastasia"
-    logicAppName = "LogExport-Query1"
+    logicAppName = "LogExport-Query"
     frequency = "Minute"
     interval = 5
     logQuery = "AzureDiagnostics"
     workspaceSubscriptionId = ""
     workspaceName = "LogAlertsPOC"
     workspaceResourceGroup = "logalerts"
-    timespan = "PT5M"    
-    identityName = "LogReaderIdentity"
+    timespan = "PT5M"        
     dataIngestUrl = ""    
 }
 
@@ -33,20 +32,14 @@ resource "azurerm_resource_group" "logicapp"{
     location = local.location
 }
 
-# Create a Managed Identity
-resource "azurerm_user_assigned_identity" "logicapp_identity"{
-    resource_group_name = azurerm_resource_group.logicapp.name
-    location = azurerm_resource_group.logicapp.location
-    name = local.identityName
-}
 
 # Assign Monitoring Reader role to the Identity
 resource "azurerm_role_assignment" "logicapp_identity"{
     scope = "/subscriptions/${local.workspaceSubscriptionId}/resourcegroups/${local.workspaceResourceGroup}/providers/microsoft.operationalinsights/workspaces/${local.workspaceName}"
     role_definition_name = "Monitoring Reader"
-    principal_id = azurerm_user_assigned_identity.logicapp_identity.principal_id
+    principal_id = jsondecode(azurerm_resource_group_template_deployment.logicapp.output_content).principalId.value
 
-    depends_on = [ azurerm_user_assigned_identity.logicapp_identity ]
+    depends_on = [ azurerm_resource_group_template_deployment.logicapp ]
 }
 
 # Create the Logic App Workflow and assign Identity at point of creation - identity assignation can only be done via ARM template
@@ -55,23 +48,16 @@ resource "azurerm_resource_group_template_deployment" "logicapp"{
     name = "deploy-logicApp"
     resource_group_name = local.resource_group_name
     deployment_mode = "Incremental"
-    /*template_content = templatefile("azuredeploy.json",{
-        "workflow_name" = local.logicAppName
-        "location" = local.location
-        "identity" = azurerm_user_assigned_identity.logicapp_identity.id
-        "frequency" = local.frequency
-        "interval" = local.interval
-    })*/
+    
     template_content = file("azuredeploy.json")
     parameters_content = jsonencode({
         workflow_name = {value=local.logicAppName}
-        location =      {value=local.location}
-        identity =      {value=azurerm_user_assigned_identity.logicapp_identity.id}
+        location =      {value=local.location}       
         frequency =     {value=local.frequency}
         interval =      {value=local.interval}
-    })
-  
-    depends_on = [ azurerm_user_assigned_identity.logicapp_identity ]
+    })  
+    
+     depends_on = [ azurerm_resource_group.logicapp ]
 }
 
 resource "azurerm_logic_app_action_custom" "logicapp_executequery"{
@@ -80,8 +66,7 @@ resource "azurerm_logic_app_action_custom" "logicapp_executequery"{
     body = <<BODY
         {
               "inputs": {
-                    "authentication": {
-                        "identity": "${azurerm_user_assigned_identity.logicapp_identity.id}",
+                    "authentication": {                        
                         "type": "ManagedServiceIdentity"
                     },
                     "body": {

@@ -10,10 +10,6 @@
             "type": "String",
             "defaultValue": "southeastasia"
         },
-        "identity": {
-            "type": "string",
-            "defaultValue":""
-        },
         "frequency": {
             "type": "String",
             "defaultValue": "Minute"
@@ -32,10 +28,7 @@
             "location": "[parameters('location')]",
             "tags": {},            
             "identity": {
-                "type": "UserAssigned",
-                "userAssignedIdentities": {
-                    "[parameters('identity')]": {}
-                }
+                "type": "SystemAssigned"
             },
             "properties": {
                 "definition": {
@@ -61,6 +54,10 @@
         "workflowId":{
             "type": "String",
             "value": "[resourceId('Microsoft.Logic/workflows',parameters('workflow_name'))]"
+        },
+        "principalId":{
+            "type":"String",
+            "value":"[reference(resourceId('Microsoft.Logic/workflows',parameters('workflow_name')),'2019-05-01','full').identity.principalId]"
         }
     }
 }
